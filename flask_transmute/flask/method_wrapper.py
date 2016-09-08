@@ -2,7 +2,9 @@ import json
 import yaml
 import functools
 from flask import jsonify, request, current_app
-from ..serializers import get_serializer, SerializerException
+from schematics.exceptions import BaseError
+from schematics.types.compound import ModelType, ListType
+from schematics.models import Model
 from ..function import NoDefault
 from ..exceptions import ApiException
 
@@ -16,10 +18,9 @@ def wrap_method(transmute_function):
 
     is_post_method = tf.creates or tf.updates
     api_exceptions = tuple(
-        list(tf.error_exceptions or []) + [ApiException, SerializerException]
+        list(tf.error_exceptions or []) + [ApiException]
     )
     args_not_empty = len(tf.arguments) > 0
-    result_serializer = get_serializer(tf.return_type)
 
     @functools.wraps(tf.raw_func)
     def wrapper_func(*args, **kwargs):
@@ -27,11 +28,7 @@ def wrap_method(transmute_function):
             request_params = _retrieve_request_params(args_not_empty, is_post_method)
             _add_request_parameters_to_args(tf.arguments, request_params, kwargs)
             result = tf.raw_func(*args, **kwargs)
-            result = result_serializer.serialize(result)
-            return _return({
-                "success": True,
-                "result": result
-            })
+            return _return(tf.return_type.to_primitive(result))
         except Exception as e:
             if api_exceptions is not None and isinstance(e, api_exceptions):
                 return _return({
@@ -71,8 +68,7 @@ def _add_request_parameters_to_args(arguments, request_args, arg_dict):
             else:
                 continue
         try:
-            serializer = get_serializer(info.type)
-            if isinstance(info.type, list):
+            if isinstance(info.type, ListType):
                 # in the case where the request is GET,
                 # we need to use a multidict field.
                 if hasattr(request_args, "getlist"):
@@ -82,9 +78,13 @@ def _add_request_parameters_to_args(arguments, request_args, arg_dict):
                     value = request_args.get(argument)
             else:
                 value = request_args.get(argument)
-            value = serializer.deserialize(value)
 
-        except SerializerException as e:
+            if isinstance(info.type, ModelType):
+                value = info.type(value)
+                value.validate()
+            else:
+                value = info.type.validate(value)
+        except BaseError as e:
             raise ApiException("parameter {0}: {1}".format(argument, str(e)))
         arg_dict[argument] = value
 

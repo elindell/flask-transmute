@@ -39,11 +39,14 @@ class Paths(object):
             properties = {}
             required = []
             for arg_name, arg_info in transmute_func.arguments.items():
-                properties[arg_name] = {"type": arg_info.type}
+                properties[arg_name] = self._definitions.get(arg_info.type)
                 if arg_info.default is NoDefault:
                     required.append(arg_name)
-            model = {"properties": properties, "required": required}
-            param_spec["schema"] = self._definitions.get(model)
+            param_spec["schema"] = {
+                'type': 'object',
+                'properties': properties,
+                'required': required
+            }
             path_spec["parameters"].append(param_spec)
 
         else:
@@ -58,11 +61,12 @@ class Paths(object):
 
                 path_spec["parameters"].append(param_spec)
 
-        for code, details in transmute_func.responses.items():
-            response_spec = {"description": details["description"]}
-            if details["return_type"] is not type(None):
-                response_spec["schema"] = self._definitions.get(details["return_type"])
-            path_spec["responses"][str(code)] = response_spec
+        response_spec = {
+            "description": "success",
+        }
+        if transmute_func.return_type is not type(None):
+            response_spec["schema"] = self._definitions.get(transmute_func.return_type)
+        path_spec["responses"]["200"] = response_spec
 
         method = "get"
         if transmute_func.creates:

@@ -51,9 +51,6 @@ class TransmuteFunction(object):
         # by the final function
         self.produces = ["application/json"]
         self.raw_func = func
-        # status_codes represents the possible status codes
-        # the function can return
-        self.responses = _get_responses(self.return_type)
         # this is to make discovery easier.
         # TODO: make sure this doesn't mess up GC, as it's
         # a cyclic reference.
@@ -82,24 +79,7 @@ def _extract_arguments_and_return_type(func):
 
         default = NoDefault if len(defaults) <= i else defaults[i]
         arguments[name] = ArgumentInfo(
-            default, argspec.annotations.get(name, str)
+            default, argspec.annotations[name]
         )
 
     return arguments, argspec.annotations.get("return", type(None))
-
-
-def _get_responses(return_type):
-    return {
-        200: {
-            "description": "success",
-            "return_type": {"properties": {"success": {"type": bool},
-                                           "result": {"type": return_type}},
-                            "required": ["success", "result"]}
-        },
-        400: {
-            "description": "invalid input received",
-            "return_type": {"properties": {"success": {"type": bool},
-                                           "message": {"type": str}},
-                            "required": ["success", "message"]}
-        }
-    }
